@@ -204,6 +204,23 @@ h1, h2, h3, h4 { font-style: normal; overflow-wrap: anywhere; }
   .wp-amenities { grid-template-columns: 1fr !important; }
 }
 
+/* card mode (one hotel at a time) — responsive */
+.wp-ct { max-width: 860px; margin: 0 auto; }
+.wp-ct-card { display: grid; grid-template-columns: minmax(220px, 300px) 1fr; }
+.wp-ct-art { position: relative; min-height: 260px; }
+.wp-ct-body { padding: 22px 26px 20px; min-width: 0; }
+@media (min-width: 1700px) {
+  .wp-ct { max-width: 980px; }
+}
+@media (max-width: 760px) {
+  .wp-ct-card { grid-template-columns: minmax(0, 1fr); }
+  .wp-ct-art { min-height: 170px; height: 170px; }
+  .wp-ct-body { padding: 16px 16px 14px; }
+}
+@media (max-width: 480px) {
+  .wp-ct .wp-choice button { flex: 1 1 100%; justify-content: center; }
+}
+
 /* hover / focus tooltip (used on the "AI summary" badge) */
 .wp-tip { position: relative; cursor: help; }
 .wp-tip::after {
@@ -1954,7 +1971,16 @@ function CardTask({ pid, hotels, cityKey, count, showAi, neutralLabel, votes, fa
   }, [l == null, pid]);
   if (idx == null) return <div className="wp-text" style={{ textAlign: "center", padding: 80, color: C.inkSoft }}>Loading…</div>;
   if (!deck.length) return <div className="wp-text" style={{ textAlign: "center", padding: 80, color: C.inkSoft }}>No hotels available for this task. Please contact the researcher.</div>;
-  if (!l) return null;   // finished — the exit flow takes over
+  if (!l) return (   // finished — the exit flow opens automatically; this panel catches "Keep browsing"
+    <div className="wp-ct wp-text" style={{ textAlign: "center", padding: "70px 20px", color: C.inkSoft }}>
+      <div style={{ fontFamily: "'Poppins', sans-serif", fontSize: 22, fontWeight: 700, color: C.ink, marginBottom: 10 }}>You have reviewed all hotels.</div>
+      <p style={{ fontSize: 14.5, margin: "0 0 18px" }}>There are no more hotels to rate.</p>
+      <button type="button" className="wp-btn wp-accent" onClick={onAllDone}
+        style={{ background: C.green, color: "#fff", border: "none", borderRadius: 99, padding: "12px 26px", fontSize: 15, fontWeight: 700, minHeight: 44 }}>
+        Finish study
+      </button>
+    </div>
+  );
   const desc = l.about && l.about.trim() && l.about.trim() !== (l.seo || "").trim() ? l.about.trim() : (l.desc || "");
   const choose = async (choice) => {
     if (busy || tut) return;
@@ -1972,19 +1998,19 @@ function CardTask({ pid, hotels, cityKey, count, showAi, neutralLabel, votes, fa
   const pill = (extra) => ({ display: "inline-flex", alignItems: "center", gap: 8, borderRadius: 99, padding: "12px 26px",
     fontSize: 14.5, fontWeight: 700, border: `1px solid ${C.line}`, background: C.card, color: C.ink, minHeight: 44, cursor: "pointer", opacity: busy ? 0.6 : 1, ...extra });
   return (
-    <div style={{ maxWidth: 860, margin: "0 auto" }}>
+    <div className="wp-ct">
       <div id="wp-progress" style={{ display: "flex", alignItems: "center", gap: 14, margin: "4px 0 16px" }}>
         <span style={{ fontFamily: "'Roboto Mono', monospace", fontSize: 13, color: C.inkSoft, whiteSpace: "nowrap" }}>Hotel {Math.min(idx + 1, deck.length)} / {deck.length}</span>
         <div style={{ flex: 1, height: 8, background: C.line, borderRadius: 99, overflow: "hidden" }} aria-hidden="true">
           <div style={{ width: `${Math.round((idx / deck.length) * 100)}%`, height: "100%", background: C.green, borderRadius: 99, transition: "width .3s" }} />
         </div>
       </div>
-      <article className="wp-row" onMouseEnter={() => Track.hoverStart(l.id)} onMouseLeave={() => Track.hoverEnd(l.id)}
-        style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 18, boxShadow: "0 10px 28px rgba(18,43,51,.08)", overflow: "hidden", display: "grid", gridTemplateColumns: "minmax(220px, 300px) 1fr" }}>
-        <HoverZone hotelId={l.id} z="photo" style={{ position: "relative", minHeight: 260 }}>
+      <article className="wp-row wp-ct-card" onMouseEnter={() => Track.hoverStart(l.id)} onMouseLeave={() => Track.hoverEnd(l.id)}
+        style={{ background: C.card, border: `1px solid ${C.line}`, borderRadius: 18, boxShadow: "0 10px 28px rgba(18,43,51,.08)", overflow: "hidden" }}>
+        <HoverZone hotelId={l.id} z="photo" className="wp-ct-art">
           <CityArt className="wp-art" gradient={l.gradient} image={l.image} imageFallback={l.imageRemote} />
         </HoverZone>
-        <div className="wp-text" style={{ padding: "22px 26px 20px", minWidth: 0 }}>
+        <div className="wp-text wp-ct-body">
           <HoverZone hotelId={l.id} z="title"><div className="wp-text" style={{ fontFamily: "'Poppins', sans-serif", fontSize: aiSt.titlePx, fontWeight: aiSt.titleBold ? 700 : 400, color: C.ink, lineHeight: 1.25 }}>{l.name}</div></HoverZone>
           <Zone hotelId={l.id} z="rating" style={{ display: "flex", alignItems: "center", gap: 7, margin: "7px 0 14px" }}>
             <Buoys value={l.rating || 0} size={aiSt.ratingPx - 1.5} />
@@ -2018,7 +2044,6 @@ function CardTask({ pid, hotels, cityKey, count, showAi, neutralLabel, votes, fa
               <button type="button" disabled={busy} onClick={() => choose("not_sure")} className="wp-btn wp-ghost" style={pill({ color: C.inkSoft })}>{neutralLabel || "Not sure"}</button>
               <button type="button" disabled={busy} onClick={() => choose("dislike")} className="wp-btn wp-ghost" style={pill({ borderColor: "#B3443B", color: "#B3443B" })}>✕ Dislike</button>
             </div>
-            <p className="wp-text" style={{ marginTop: 12, fontSize: 12, color: C.inkSoft }}>Choose one to continue — the next hotel appears automatically. You cannot go back.</p>
           </div>
         </div>
       </article>

@@ -573,6 +573,65 @@ app.get("/api/admin/export/card_events.csv", requireAdmin, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).send("export failed"); }
 });
 
+/* card mode: one row per participant (counts, dwell stats, task duration) */
+app.get("/api/admin/export/cards_participants.csv", requireAdmin, async (req, res) => {
+  try {
+    const allow = await allowedPids(req);
+    const evs = (await db.cardEventRows()).filter(r => !allow || allow.has(r.pid));
+    const ps = {}; for (const p of await db.participantSummaries()) ps[p.pid] = p;
+    const by = {};
+    for (const r of evs) {
+      const o = by[r.pid] || (by[r.pid] = { n: 0, save: 0, not_sure: 0, dislike: 0, dwells: [], first: r.at, last: r.at });
+      o.n++; if (o[r.choice] != null) o[r.choice]++;
+      o.dwells.push(r.dwell_ms || 0);
+      if (r.at < o.first) o.first = r.at;
+      if (r.at > o.last) o.last = r.at;
+    }
+    const med = a => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y); const m = Math.floor(s.length / 2); return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+    const rows = Object.entries(by).map(([pid, o]) => {
+      const p = ps[pid] || {};
+      return [pid, o.n, o.save, o.not_sure, o.dislike,
+        o.n ? (o.save / o.n).toFixed(3) : "", o.n ? (o.dislike / o.n).toFixed(3) : "",
+        (o.dwells.reduce((a, b) => a + b, 0) / Math.max(o.n, 1) / 1000).toFixed(2),
+        (med(o.dwells) / 1000).toFixed(2),
+        o.first && o.last ? Math.round((new Date(o.last) - new Date(o.first)) / 1000) : "",
+        o.first || "", o.last || "",
+        p.aiSearch == null ? "" : (p.aiSearch ? "on" : "off"),
+        p.tutorialDoneAt || "", p.exitedAt || "",
+        p.deviceScreen || "", p.deviceViewport || ""];
+    });
+    await sendCsv(res, "cards_participants.csv", toCsv(
+      ["participant_id", "cards_completed", "n_save", "n_not_sure", "n_dislike", "share_save", "share_dislike",
+       "mean_dwell_seconds", "median_dwell_seconds", "task_duration_seconds", "first_card_at", "last_card_at",
+       "ai_summary_shown", "tutorial_completed_at", "finished_at", "screen_resolution", "window_size"], rows));
+  } catch (e) { console.error(e); res.status(500).send("export failed"); }
+});
+
+/* card mode: one row per hotel (how often shown, choice shares, mean dwell) */
+app.get("/api/admin/export/cards_hotels.csv", requireAdmin, async (req, res) => {
+  try {
+    const allow = await allowedPids(req);
+    const evs = (await db.cardEventRows()).filter(r => !allow || allow.has(r.pid));
+    const hmap = {}; for (const h of await db.listHotels({})) hmap[h.id] = h;
+    const by = {};
+    for (const r of evs) {
+      const o = by[r.hotel_id] || (by[r.hotel_id] = { n: 0, save: 0, not_sure: 0, dislike: 0, dwell: 0, pos: 0 });
+      o.n++; if (o[r.choice] != null) o[r.choice]++;
+      o.dwell += r.dwell_ms || 0; o.pos += r.idx || 0;
+    }
+    const rows = Object.entries(by).map(([hid, o]) => {
+      const h = hmap[hid] || {};
+      return [hid, h.name || "", h.rating != null ? h.rating : "", h.reviewCount != null ? h.reviewCount : "",
+        o.n, o.save, o.not_sure, o.dislike,
+        o.n ? (o.save / o.n).toFixed(3) : "", o.n ? (o.dislike / o.n).toFixed(3) : "",
+        o.n ? (o.dwell / o.n / 1000).toFixed(2) : "", o.n ? (o.pos / o.n).toFixed(1) : ""];
+    }).sort((a, b) => String(a[1]).localeCompare(String(b[1])));
+    await sendCsv(res, "cards_hotels.csv", toCsv(
+      ["hotel_id", "hotel_name", "hotel_rating", "hotel_review_count", "times_shown",
+       "n_save", "n_not_sure", "n_dislike", "save_rate", "dislike_rate", "mean_dwell_seconds", "mean_shown_position"], rows));
+  } catch (e) { console.error(e); res.status(500).send("export failed"); }
+});
+
 app.get("/api/admin/export/participants.csv", requireAdmin, async (req, res) => {
   try {
     const allow = await allowedPids(req);
@@ -1161,7 +1220,10 @@ const ADMIN_HTML = `<!doctype html>
       <a class="dl" href="/api/admin/export/votes.csv">Export raw votes CSV</a>
       <a class="dl" href="/api/admin/export/review_votes.csv">Export review likes CSV</a>
       <a class="dl" href="/api/admin/export/saves.csv">Export saves CSV</a>
-      <a class="dl" href="/api/admin/export/card_events.csv">Export card decisions CSV</a>
+      <span class="muted" style="font-size:12px;align-self:center;margin-left:4px">Card mode:</span>
+      <a class="dl" href="/api/admin/export/card_events.csv">Card decisions CSV</a>
+      <a class="dl" href="/api/admin/export/cards_participants.csv">Cards per-participant CSV</a>
+      <a class="dl" href="/api/admin/export/cards_hotels.csv">Cards per-hotel CSV</a>
       <a class="dl" href="/api/admin/export/interactions.csv">Export interaction timeline CSV</a>
       <a class="dl" href="/api/admin/export/hover_before_click.csv">Export pre-click attention CSV</a>
       <a class="dl" href="/api/admin/export/hotel_content.csv">Export hotel content + text stats CSV</a>
